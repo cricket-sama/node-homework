@@ -1,19 +1,27 @@
 const express = require('express');
 const app = express();
 
+global.user_id = null;
+global.users = [];
+global.tasks = [];
+
 const logger = (req, res, next) => {
     console.log(req.method, req.path, req.query)
     next()
 }
 app.use(logger);
+app.use(express.json({ limit: "1kb" }));
 
 app.get('/', (req, res) => {
-  res.send('Hello, World!');
+  res.send({ message: "Hello, World!" });
 });
 
 app.post('/testpost', (req, res) => {
     res.send({ message: 'I like Dr. Pepper!' });
 });
+
+const userRouter = require('./routes/userRoutes');
+app.use('/api/users', userRouter);
 
 const notFound = require('./middleware/not-found');
 app.use(notFound);
