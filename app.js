@@ -1,5 +1,10 @@
 const express = require('express');
 const app = express();
+const userRouter = require('./routes/userRoutes');
+const taskRouter = require('./routes/taskRoutes');
+const authMiddleware = require('./middleware/auth');
+const notFound = require('./middleware/not-found');
+const errorHandler = require('./middleware/error-handler');
 
 global.user_id = null;
 global.users = [];
@@ -10,23 +15,21 @@ const logger = (req, res, next) => {
     next()
 }
 app.use(logger);
-app.use(express.json({ limit: "1kb" }));
+app.use(express.json({ limit: '1kb' }));
 
 app.get('/', (req, res) => {
-  res.send({ message: "Hello, World!" });
+  res.send({ message: 'Hello, World!' });
 });
 
 app.post('/testpost', (req, res) => {
     res.send({ message: 'I like Dr. Pepper!' });
 });
 
-const userRouter = require('./routes/userRoutes');
 app.use('/api/users', userRouter);
+app.use('/api/tasks', authMiddleware, taskRouter);
 
-const notFound = require('./middleware/not-found');
 app.use(notFound);
 
-const errorHandler = require('./middleware/error-handler');
 app.use(errorHandler);
 
 const port = process.env.PORT || 3000;
