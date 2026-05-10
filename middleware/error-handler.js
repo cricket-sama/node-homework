@@ -7,13 +7,16 @@ const errorHandlerMiddleware = (err, req, res, next) => {
       'The database connection was refused.  Is your database service running?',
     );
   }
+
+  if (err.name === 'PrismaClientInitializationError') {
+    console.log("Couldn't connect to the database. Is it running?");
   
   console.error(
     'Internal server error: ',
     err.constructor.name,
     JSON.stringify(err, ['name', 'message', 'stack']),
   );
-
+}
   if (!res.headersSent) {
     return res
       .status(StatusCodes.INTERNAL_SERVER_ERROR)
