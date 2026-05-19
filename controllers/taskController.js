@@ -23,12 +23,14 @@ const create = async (req, res) => {
       data: {
         title: value.title,
         isCompleted: isCompleted,
+        priority: value.priority,
         userId: global.user_id,
       },
       select: {
         id: true,
         title: true,
         isCompleted: true,
+        priority: true,
       },
     });
     res
@@ -37,18 +39,59 @@ const create = async (req, res) => {
 };
 
 const index = async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const whereClause = { userId: global.user_id };
+
+    if (req.query.find) {
+      whereClause.title = {
+        contains: req.query.find,
+        mode: 'insensitive'
+      };
+    }
+
     const tasks = await prisma.task.findMany({
-      where: {
-        userId: global.user_id,
+      where: whereClause,
+      select: { 
+        id: true,
+        title: true,
+        isCompleted: true,
+        priority: true,
+        createdAt: true,
+        User: {
+          select: {
+            name: true,
+            email: true
+          }
+        }
       },
-      select: { title: true, isCompleted: true, id: true },
+      skip: skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' }
     });
+
+    const totalTasks = await prisma.task.count({
+      where: whereClause
+    });
+
+    const pagination = {
+      page: page,
+      limit: limit,
+      total: totalTasks,
+      pages: Math.ceil(totalTasks / limit),
+      hasNext: page < Math.ceil(totalTasks / limit),
+      hasPrev: page > 1,
+    };
+
     if (tasks.length === 0) {
       return res
         .status(StatusCodes.NOT_FOUND)
         .json({ message: 'No task found' });
     }
-    return res.json(tasks);
+    return res
+      .status(StatusCodes.OK)
+      .json({ tasks: tasks, pagination: pagination });
 };
 
 const show = async (req, res, next) => {
@@ -66,7 +109,14 @@ const show = async (req, res, next) => {
             userId: global.user_id,
           },
         },
-        select: { title: true, isCompleted: true, id: true },
+        select: {
+          title: true,
+          isCompleted: true,
+          id: true,
+          User: {
+            select: { name: true },
+          },
+        },
       });
       if (!task) {
         return res
@@ -100,7 +150,12 @@ const update = async (req, res, next) => {
           id: taskToFind,
           userId: global.user_id,
         },
-        select: { title: true, isCompleted: true, id:true }
+        select: {
+          title: true, 
+          isCompleted: true,
+          priority: true,
+          id:true 
+        }
       });
       return res.json(task);
     } catch (err) {
@@ -142,4 +197,50 @@ const deleteTask = async (req, res, next) => {
     }
 };
 
-module.exports = { index, create, show, update, deleteTask };
+const bulkCreate = async (req, res, next) => {
+    const { tasks } = req.body;
+
+    if (!tasks || !Array.isArray(tasks) || tasks.length === 0) {
+      return res
+        .status(StatusCodes.BAD_REQUEST)
+        .json({ error: 'Invalid request data. Expected an array of tasks.' });
+    }
+
+    const validTasks = [];
+    for (const task of tasks) {
+      const { error, value } = taskSchema.validate(task);
+      if (error) {
+        return res
+          .status(StatusCodes.BAD_REQUEST)
+          .json({
+            error: 'Validation failed',
+            details: error.details,
+          });
+      }
+      validTasks.push({
+        title: value.title,
+        isCompleted: value.isCompleted,
+        priority: value.priority,
+        userId: global.user_id,
+      });
+    }
+
+    try {
+      const result = await prisma.task.createMany({
+        data: validTasks,
+        skipDuplicates: false,
+      });
+
+      res
+        .status(StatusCodes.CREATED)
+        .json({
+          message: 'Bulk task creation successful',
+          tasksCreated: result.count,
+          totalRequested: validTasks.length,
+        });
+    } catch (err) {
+      return next(err);
+    }
+};
+
+module.exports = { index, create, show, update, deleteTask, bulkCreate };

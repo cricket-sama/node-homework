@@ -64,31 +64,71 @@ const register = async (req, res, next) => {
     value.hashedPassword = await hashPassword(value.password);
     delete value.password;
     
-    let user = null;
     try {
-    user = await prisma.user.create({
-        data: { name: value.name,
-                email: value.email,
-                hashedPassword: value.hashedPassword
+      const result = await prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            email: value.email,
+            name: value.name,
+            hashedPassword: value.hashedPassword
             },
-        select: { name: true, email: true, id: true}
-    });
+          select: {
+            id: true,
+            email: true,
+            name: true
+            },
+        });
+
+        const welcomeTaskData = [
+          {
+            title: 'Complete your profile',
+            userId: newUser.id,
+            priority: 'medium',
+          },
+          {
+            title: 'Add your first task',
+            userId: newUser.id,
+            priority: 'high',
+          },
+          { title: 'Explore the app', userId: newUser.id, priority: 'low' },
+        ];
+        await tx.task.createMany({ data: welcomeTaskData });
+
+        const welcomeTasks = await tx.task.findMany({
+          where: {
+            userId: newUser.id,
+            title: { in: welcomeTaskData.map((t) => t.title) },
+          },
+          select: {
+            id: true,
+            title: true,
+            isCompleted: true,
+            userId: true,
+            priority: true,
+          },
+        });
+
+        return { user: newUser, welcomeTasks };
+      });
+
+      global.user_id = result.user.id;
+
+      res.status(201);
+      res.json({
+        user: result.user,
+        welcomeTasks: result.welcomeTasks,
+        transactionStatus: 'success',
+      });
+      return;
     } catch (err) {
-        if (err.name === "PrismaClientKnownRequestError" && err.code === "P2002") {
-        res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: 'Email already registered' });
-        } else {
+      if (err.code === 'P2002') {
+        return res
+          .status(StatusCodes.BAD_REQUEST)
+          .json({ error: 'Email already registered' });
+      } else {
         return next(err);
-        }
+      }
     }
-    if (!user) return next(new Error('User creation failed'));
-    global.user_id = user.id;
-    const cleanUser = {
-        name: user.name,
-        email: user.email
-    };
-    res.status(StatusCodes.CREATED).json(cleanUser);
 };
 
 const logoff = async (req, res) => {
