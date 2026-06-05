@@ -84,6 +84,12 @@ const index = async (req, res) => {
       hasPrev: page > 1,
     };
 
+    if (tasks.length === 0) {
+      return res
+        .status(StatusCodes.NOT_FOUND)
+        .json({ message: 'No task found' });
+    };
+
     return res
       .status(StatusCodes.OK)
       .json({ tasks: tasks, pagination: pagination });
