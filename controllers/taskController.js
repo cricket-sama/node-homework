@@ -1,5 +1,5 @@
 const { StatusCodes } = require('http-status-codes');
-const { taskSchema, patchTaskSchema } = require('../validation/taskSchema');
+const { taskSchema, patchTaskSchema, bulkUpdateSchema } = require('../validation/taskSchema');
 const prisma = require('../db/prisma');
 
 const taskCounter = (() => {
@@ -131,43 +131,43 @@ const show = async (req, res, next) => {
 };
 
 const update = async (req, res, next) => {
-    if (!req.body) req.body = {};
-    const {error, value} = patchTaskSchema.validate(req.body, { abortEarly: false });
-    if (error) {
-        return res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: error.message });
-    }
-    const taskToFind = parseInt(req.params?.id);
-    if (Number.isNaN(taskToFind)) {
+  if (!req.body) req.body = {};
+  const {error, value} = patchTaskSchema.validate(req.body, { abortEarly: false });
+  if (error) {
       return res
-        .status(StatusCodes.BAD_REQUEST)
-        .json({ message: 'The task ID passed is not valid.' });
-    }
-    try {
-      const task = await prisma.task.update({
-        data: value,
-        where: {
-          id: taskToFind,
-          userId: req.user.id,
-        },
-        select: {
-          title: true, 
-          isCompleted: true,
-          priority: true,
-          id:true 
-        }
-      });
-      return res.json(task);
-    } catch (err) {
-      if (err.code === 'P2025') {
-        return res
-          .status(StatusCodes.NOT_FOUND)
-          .json({ message: 'The task was not found.' });
-      } else {
-        return next(err);
+      .status(StatusCodes.BAD_REQUEST)
+      .json({ message: error.message });
+  }
+  const taskToFind = parseInt(req.params?.id);
+  if (Number.isNaN(taskToFind)) {
+    return res
+      .status(StatusCodes.BAD_REQUEST)
+      .json({ message: 'The task ID passed is not valid.' });
+  }
+  try {
+    const task = await prisma.task.update({
+      data: value,
+      where: {
+        id: taskToFind,
+        userId: req.user.id,
+      },
+      select: {
+        title: true, 
+        isCompleted: true,
+        priority: true,
+        id:true 
       }
+    });
+    return res.json(task);
+  } catch (err) {
+    if (err.code === 'P2025') {
+      return res
+        .status(StatusCodes.NOT_FOUND)
+        .json({ message: 'The task was not found.' });
+    } else {
+      return next(err);
     }
+  }
 };
 
 const deleteTask = async (req, res, next) => {
@@ -244,4 +244,48 @@ const bulkCreate = async (req, res, next) => {
     }
 };
 
-module.exports = { index, create, show, update, deleteTask, bulkCreate };
+const bulkUpdate = async (req, res, next) => {
+  console.log(req.body);
+  const { taskIds, isCompleted } = req.body
+  if (!req.body) req.body = {};
+  const { error, value } = bulkUpdateSchema.validate(req.body, {
+    abortEarly: false,
+  });
+  if (error) {
+    return res.status(StatusCodes.BAD_REQUEST).json({ message: error.message });
+  }
+  if (
+    !Array.isArray(taskIds) ||
+    taskIds.length === 0 ||
+    typeof isCompleted !== 'boolean'
+  ) {
+    return res
+      .status(StatusCodes.BAD_REQUEST)
+      .json({ message: 'Invalid request data' });
+  }
+
+  try {
+    const result = await prisma.task.updateMany({
+      where: {
+        id: {
+          in: taskIds
+        },
+        userId: req.user.id
+      },
+      data: {
+        isCompleted
+      }
+    });
+
+    return res
+      .status(200)
+      .json({
+        message: 'Tasks updated',
+        tasksUpdated: result.count
+      });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+module.exports = { index, create, show, update, deleteTask, bulkCreate, bulkUpdate };

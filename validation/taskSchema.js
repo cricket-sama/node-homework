@@ -17,6 +17,13 @@ const patchTaskSchema = Joi.object({
   .min(1)
   .message('No attributes to change were specified.');
 
+const bulkUpdateSchema = Joi.object({
+  taskIds: Joi.array()
+    .items(Joi.number().integer().positive())
+    .min(1)
+    .required(),
+  isCompleted: Joi.boolean().required(),
+});
   
 
-module.exports = { taskSchema, patchTaskSchema };
+module.exports = { taskSchema, patchTaskSchema, bulkUpdateSchema };
